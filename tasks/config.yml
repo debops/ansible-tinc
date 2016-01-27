@@ -33,10 +33,14 @@
   args:
     creates: '/etc/tinc/{{ tinc_network }}/rsa_key.priv'
 
+- file: path=/etc/tinc/{{ tinc_network }}/rsa_key.priv owner=root group=root mode=0600
+
 - name: Create RSA public key
-  shell: openssl rsa -pubout -in /etc/tinc/{{ tinc_network }}/rsa_key.priv -out /etc/tinc/{{ tinc_network }}/rsa_key.pub
+  shell: openssl rsa -pubout -in /etc/tinc/{{ tinc_network }}/rsa_key.priv -RSAPublicKey_out -out /etc/tinc/{{ tinc_network }}/rsa_key.pub
   args:
     creates: '/etc/tinc/{{ tinc_network }}/rsa_key.pub'
+
+- file: path=/etc/tinc/{{ tinc_network }}/rsa_key.pub owner=root group=root mode=0600
 
 - name: Read RSA public key
   slurp:
