@@ -2,7 +2,7 @@
 
 - name: Create required directories
   file:
-    path: '/etc/tinc/{{ tinc_network }}/hosts/{{ tinc_hostname | replace("-","_") }}.d'
+    path: '/etc/tinc/{{ tinc_network }}/hosts'
     state: 'directory'
     owner: 'root'
     group: 'root'
@@ -38,45 +38,25 @@
   args:
     creates: '/etc/tinc/{{ tinc_network }}/rsa_key.pub'
 
+- name: Read RSA public key
+  slurp:
+    src: "/etc/tinc/{{ tinc_network }}/rsa_key.pub"
+  register: tinc_rsa_key_pub
+
+- set_fact:
+    tinc_host_port: "{{ tinc_host_port }}"
+
 - name: Generate host configuration file
   template:
     src: 'etc/tinc/network/hosts/hostname.j2'
-    dest: '/etc/tinc/{{ tinc_network }}/hosts/{{ tinc_hostname | replace("-","_") }}.d/00_host-config'
-    owner: 'root'
-    group: 'root'
-    mode: '0644'
-
-- name: copy rsa public key
-  copy:
-    src: '/etc/tinc/{{ tinc_network }}/rsa_key.pub'
-    dest: '/etc/tinc/{{ tinc_network }}/hosts/{{ tinc_hostname | replace("-","_") }}.d/99_rsa-public-key'
-
-
-- name: Assemble host configuration file from parts
-  assemble:
-    src: '/etc/tinc/{{ tinc_network }}/hosts/{{ tinc_hostname | replace("-","_") }}.d'
-    dest: '/etc/tinc/{{ tinc_network }}/hosts/{{ tinc_hostname | replace("-","_") }}'
-    owner: 'root'
-    group: '{{ tinc_group }}'
-    mode: '0640'
-  notify: [ 'Reload tinc configuration' ]
-
-- name: Read host configuration file into a variable
-  slurp:
-    src: '/etc/tinc/{{ tinc_network }}/hosts/{{ tinc_hostname | replace("-","_") }}'
-  register: tinc_register_host_config
-
-- name: Redistribute configuration of internal hosts
-  copy:
-    content: '{{ hostvars[inventory_hostname]["tinc_register_host_config"].content | b64decode }}'
-    dest: '/etc/tinc/{{ tinc_network }}/hosts/{{ hostvars[inventory_hostname]["tinc_register_host_config"].source | basename | replace("-","_") }}'
+    dest: '/etc/tinc/{{ tinc_network }}/hosts/{{ item | replace("-","_") }}'
     owner: 'root'
     group: '{{ tinc_group }}'
     mode: '0640'
   with_items: tinc_inventory_hosts
-  delegate_to: '{{ item }}'
-  when: item is defined and item != inventory_hostname and
-        hostvars[item].tinc_register_host_config is defined
+  when: ((item is defined) and
+        (hostvars[item].tinc_rsa_key_pub is defined))
+  notify: [ 'Reload tinc configuration' ]
 
 - name: Add configuration of external hosts
   copy:
