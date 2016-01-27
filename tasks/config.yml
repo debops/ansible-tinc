@@ -28,16 +28,15 @@
   notify: [ 'Reload tinc configuration' ]
   when: item.key is defined and item.key
 
-- name: Initialize RSA key pairs
-  shell: yes | tincd -n {{ tinc_network }} -K{{ tinc_rsa_key_length }}
+- name: Create RSA private key
+  shell: openssl genrsa -out /etc/tinc/{{ tinc_network }}/rsa_key.priv {{ tinc_rsa_key_length }}
   args:
     creates: '/etc/tinc/{{ tinc_network }}/rsa_key.priv'
 
-- name: Create persistent copy of host public key
-  command: cp /etc/tinc/{{ tinc_network }}/hosts/{{ tinc_hostname | replace("-","_") }}
-              /etc/tinc/{{ tinc_network }}/hosts/{{ tinc_hostname | replace("-","_") + ".d/99_rsa-public-key" }}
+- name: Create RSA public key
+  shell: openssl rsa -pubout -in /etc/tinc/{{ tinc_network }}/rsa_key.priv -out /etc/tinc/{{ tinc_network }}/rsa_key.pub
   args:
-    creates: /etc/tinc/{{ tinc_network }}/hosts/{{ tinc_hostname | replace("-","_") + ".d/99_rsa-public-key" }}
+    creates: '/etc/tinc/{{ tinc_network }}/rsa_key.pub'
 
 - name: Generate host configuration file
   template:
@@ -46,6 +45,12 @@
     owner: 'root'
     group: 'root'
     mode: '0644'
+
+- name: copy rsa public key
+  copy:
+    src: '/etc/tinc/{{ tinc_network }}/rsa_key.pub'
+    dest: '/etc/tinc/{{ tinc_network }}/hosts/{{ tinc_hostname | replace("-","_") }}.d/99_rsa-public-key'
+
 
 - name: Assemble host configuration file from parts
   assemble:
