@@ -1,0 +1,97 @@
+---
+
+- name: Create required directories
+  file:
+    path: '/etc/tinc/{{ tinc_network }}/hosts'
+    state: 'directory'
+    owner: 'root'
+    group: 'root'
+    mode: '0755'
+
+- name: Generate main configuration file
+  template:
+    src: 'etc/tinc/network/tinc.conf.j2'
+    dest: '/etc/tinc/{{ tinc_network }}/tinc.conf'
+    owner: 'root'
+    group: 'root'
+    mode: '0644'
+  notify: [ 'Reload tinc configuration' ]
+
+- name: Generate network scripts when defined
+  template:
+    src: 'etc/tinc/network/tinc-script.j2'
+    dest: '/etc/tinc/{{ tinc_network }}/{{ item.key }}'
+    owner: 'root'
+    group: 'root'
+    mode: '0750'
+  with_dict: tinc_scripts
+  notify: [ 'Reload tinc configuration' ]
+  when: item.key is defined and item.key
+
+- name: Create RSA private key
+  shell: openssl genrsa -out /etc/tinc/{{ tinc_network }}/rsa_key.priv {{ tinc_rsa_key_length }}
+  args:
+    creates: '/etc/tinc/{{ tinc_network }}/rsa_key.priv'
+
+- file: path=/etc/tinc/{{ tinc_network }}/rsa_key.priv owner=root group=root mode=0600
+
+- name: Create RSA public key
+  shell: openssl rsa -pubout -in /etc/tinc/{{ tinc_network }}/rsa_key.priv -RSAPublicKey_out -out /etc/tinc/{{ tinc_network }}/rsa_key.pub
+  args:
+    creates: '/etc/tinc/{{ tinc_network }}/rsa_key.pub'
+
+- file: path=/etc/tinc/{{ tinc_network }}/rsa_key.pub owner=root group=root mode=0600
+
+- name: Read RSA public key
+  slurp:
+    src: "/etc/tinc/{{ tinc_network }}/rsa_key.pub"
+  register: tinc_rsa_key_pub
+
+- set_fact:
+    tinc_host_port: "{{ tinc_host_port }}"
+
+- name: Generate host configuration file
+  template:
+    src: 'etc/tinc/network/hosts/hostname.j2'
+    dest: '/etc/tinc/{{ tinc_network }}/hosts/{{ item | replace("-","_") }}'
+    owner: 'root'
+    group: '{{ tinc_group }}'
+    mode: '0640'
+  with_items: tinc_inventory_hosts
+  when: ((item is defined) and
+        (hostvars[item].tinc_rsa_key_pub is defined))
+  notify: [ 'Reload tinc configuration' ]
+
+- name: Add configuration of external hosts
+  copy:
+    content: '{{ item.value }}'
+    dest: '/etc/tinc/{{ tinc_network }}/hosts/{{ item.key | replace("-","_") }}'
+    owner: 'root'
+    group: '{{ tinc_group }}'
+    mode: '0640'
+  with_dict: tinc_external_hosts
+  when: tinc_external_hosts is defined and tinc_external_hosts
+
+- name: install the systemd unit file
+  template:
+    src: 'etc/systemd/system/tinc@.service.j2'
+    dest: '/etc/systemd/system/tinc@.service'
+    owner: 'root'
+    group: 'root'
+    mode: '0644'
+  when: ansible_local|d() and (ansible_local.init is undefined or
+        ansible_local.init in [ 'systemd' ])
+
+- name: register autostart tinc service systemd
+  service:
+    name: 'tinc@{{ tinc_network }}'
+    enabled: 'yes'
+    state: 'started'
+  notify: [ 'Restart tinc VPN connection' ]
+  when: ansible_local|d() and (ansible_local.init is undefined or
+        ansible_local.init in [ 'systemd' ])
+
+- name: Start VPN interface if required
+  shell: test ! -x /tmp/ifupdown-delayed-{{ tinc_interface }} || /tmp/ifupdown-delayed-{{ tinc_interface }} {{ tinc_interface_auto | bool | lower }}
+  changed_when: False
+
