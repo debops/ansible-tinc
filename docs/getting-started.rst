@@ -52,7 +52,7 @@ connections between hosts, you can tell the ``debops.tinc`` role to add the
 private IP addresses of the hosts to their public key files by adding in the
 Ansible inventory::
 
-    tinc__host_addresses: '{{ tinc__host_addresses_ip }}'
+    tinc__host_addresses: [ '{{ tinc__host_addresses_ip }}' ]
 
 Example playbook
 ----------------
